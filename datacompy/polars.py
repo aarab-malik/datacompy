@@ -259,7 +259,12 @@ class PolarsCompare(BaseCompare):
             raise TypeError(f"{index} must be a Polars DataFrame")
 
         if cast_column_names_lower:
-            dataframe.columns = [str(col).lower() for col in dataframe.columns]
+            # Assigning duplicate names raises polars.exceptions.DuplicateError.
+            # Reject that case here with the same ValueError the other backends use.
+            columns = [str(col).lower() for col in dataframe.columns]
+            if len(set(columns)) < len(columns):
+                raise ValueError(f"{index} must have unique column names")
+            dataframe.columns = columns
 
         # Check if join_columns are present in the dataframe
         if not set(self.join_columns).issubset(set(dataframe.columns)):
@@ -267,9 +272,6 @@ class PolarsCompare(BaseCompare):
             raise ValueError(
                 f"{index} must have all columns from join_columns: {missing_cols}"
             )
-
-        if len(set(dataframe.columns)) < len(dataframe.columns):
-            raise ValueError(f"{index} must have unique column names")
 
         if len(dataframe.unique(subset=self.join_columns)) < len(dataframe):
             self._any_dupes = True
@@ -646,8 +648,7 @@ class PolarsCompare(BaseCompare):
                 + len(self.df1_unq_rows)
                 + len(self.df2_unq_rows)
             )
-            col_match = self.intersect_rows[column]
-            match_cnt = col_match.count()
+            match_cnt = len(self.intersect_rows)
             sample_count = min(sample_count, row_cnt - match_cnt)
             sample = pl.concat(
                 [self.df1_unq_rows[[column]], self.df2_unq_rows[[column]]]
